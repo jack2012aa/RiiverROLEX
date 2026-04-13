@@ -2,31 +2,31 @@
 #include "Timer.h"
 #include <city.h>
 
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <random>
+#include <sstream>
 #include <stdlib.h>
+#include <string>
 #include <thread>
 #include <time.h>
 #include <vector>
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <random>
 
 #ifdef LONG_TEST_EPOCH
-  #define TEST_EPOCH 40
-  #define TIME_INTERVAL 1
+#define TEST_EPOCH 40
+#define TIME_INTERVAL 1
 #else
 #ifdef SHORT_TEST_EPOCH
-  #define TEST_EPOCH 5
-  #define TIME_INTERVAL 0.2
+#define TEST_EPOCH 5
+#define TIME_INTERVAL 0.2
 #else
 #ifdef MIDDLE_TEST_EPOCH
-  #define TEST_EPOCH 10
-  #define TIME_INTERVAL 1
+#define TEST_EPOCH 10
+#define TIME_INTERVAL 1
 #else
-  #define TEST_EPOCH 10
-  #define TIME_INTERVAL 0.5
+#define TEST_EPOCH 10
+#define TIME_INTERVAL 0.5
 #endif
 #endif
 #endif
@@ -68,7 +68,6 @@ std::string ycsb_load_path;
 std::string ycsb_trans_path;
 int fix_range_size = -1;
 
-
 std::thread th[MAX_APP_THREAD];
 uint64_t tp[MAX_APP_THREAD][MAX_CORO_NUM];
 
@@ -78,21 +77,25 @@ extern uint64_t latency[MAX_APP_THREAD][MAX_CORO_NUM][LATENCY_WINDOWS];
 uint64_t latency_th_all[LATENCY_WINDOWS];
 
 std::default_random_engine e;
-std::uniform_int_distribution<Value> randval(define::kValueMin, define::kValueMax);
+std::uniform_int_distribution<Value> randval(define::kValueMin,
+                                             define::kValueMax);
 
 RolexIndex *rolex_index;
 DSM *dsm;
 std::vector<Key> train_keys;
 
-
 class RequsetGenBench : public RequstGen {
 public:
-  RequsetGenBench(DSM* dsm, Request* req, int req_num, int coro_id, int coro_cnt) :
-                  dsm(dsm), req(req), req_num(req_num), coro_id(coro_id), coro_cnt(coro_cnt) {
+  RequsetGenBench(DSM *dsm, Request *req, int req_num, int coro_id,
+                  int coro_cnt)
+      : dsm(dsm), req(req), req_num(req_num), coro_id(coro_id),
+        coro_cnt(coro_cnt) {
     local_thread_id = dsm->getMyThreadID();
     cur = coro_id;
     epoch_id = 0;
-    extra_k = MAX_KEY_SPACE_SIZE + kThreadCount * kCoroCnt * dsm->getMyNodeID() + local_thread_id * kCoroCnt + coro_id;
+    extra_k = MAX_KEY_SPACE_SIZE +
+              kThreadCount * kCoroCnt * dsm->getMyNodeID() +
+              local_thread_id * kCoroCnt + coro_id;
     flag = false;
   }
 
@@ -101,25 +104,26 @@ public:
     if (req[cur].req_type == INSERT) {
       if (cur + coro_cnt >= req_num) {
         // need_stop = true;
-        ++ epoch_id;
+        ++epoch_id;
         flag = true;
       }
       if (kIsStr) {
-        req[cur].k = req[cur].k + epoch_id;   // For insert workloads, key should remain nonexist
-      }
-      else if (flag) {
+        req[cur].k =
+            req[cur].k +
+            epoch_id; // For insert workloads, key should remain nonexist
+      } else if (flag) {
         req[cur].k = int2key(extra_k);
         extra_k += kThreadCount * kCoroCnt * dsm->getClusterSize();
       }
     }
     tp[local_thread_id][coro_id]++;
-    req[cur].v = randval(e);  // make value different per-epoch
+    req[cur].v = randval(e); // make value different per-epoch
     return req[cur];
   }
 
 private:
   DSM *dsm;
-  Request* req;
+  Request *req;
   int req_num;
   int coro_id;
   int coro_cnt;
@@ -130,38 +134,33 @@ private:
   bool flag;
 };
 
-
-RequstGen *gen_func(DSM* dsm, Request* req, int req_num, int coro_id, int coro_cnt) {
+RequstGen *gen_func(DSM *dsm, Request *req, int req_num, int coro_id,
+                    int coro_cnt) {
   return new RequsetGenBench(dsm, req, req_num, coro_id, coro_cnt);
 }
 
-
-void work_func(RolexIndex *rolex_index, const Request& r, CoroPull *sink) {
+void work_func(RolexIndex *rolex_index, const Request &r, CoroPull *sink) {
   if (r.req_type == SEARCH) {
     Value v;
     rolex_index->search(r.k, v, sink);
-  }
-  else if (r.req_type == INSERT) {
+  } else if (r.req_type == INSERT) {
     rolex_index->insert(r.k, r.v, sink);
-  }
-  else if (r.req_type == UPDATE) {
+  } else if (r.req_type == UPDATE) {
     rolex_index->update(r.k, r.v, sink);
-  }
-  else {
+  } else {
     std::map<Key, Value> ret;
     rolex_index->range_query(r.k, r.k + r.range_size, ret);
   }
 }
 
-
 rolex::Timer bench_timer;
 std::atomic<int64_t> warmup_cnt{0};
 std::atomic_bool ready{false};
 
-
 void thread_load(int id) {
   // use LOADER_NUM threads to load ycsb
-  uint64_t loader_id = std::min(kThreadCount, LOADER_NUM) * dsm->getMyNodeID() + id;
+  uint64_t loader_id =
+      std::min(kThreadCount, LOADER_NUM) * dsm->getMyNodeID() + id;
 
   printf("I am loader %lu\n", loader_id);
 
@@ -174,28 +173,28 @@ void thread_load(int id) {
   }
   Key k;
   int cnt = 0;
-  if (!kIsStr) {  // int workloads
+  if (!kIsStr) { // int workloads
     uint64_t int_k;
     while (load_in >> op >> int_k) {
       k = int2key(int_k);
       assert(op == "INSERT");
       rolex_index->insert(k, randval(e));
-      if (++ cnt % LOAD_HEARTBEAT == 0) {
+      if (++cnt % LOAD_HEARTBEAT == 0) {
         printf("thread %lu: %d load entries loaded.\n", loader_id, cnt);
       }
     }
-  }
-  else {  // string workloads
+  } else { // string workloads
     std::string str_k;
     std::string line;
     while (std::getline(load_in, line)) {
-      if (!line.size()) continue;
+      if (!line.size())
+        continue;
       std::istringstream tmp(line);
       tmp >> op >> str_k;
       k = str2key(str_k);
       assert(op == "INSERT");
       rolex_index->insert(k, randval(e));
-      if (++ cnt % LOAD_HEARTBEAT == 0) {
+      if (++cnt % LOAD_HEARTBEAT == 0) {
         printf("thread %lu: %d load entries loaded.\n", loader_id, cnt);
       }
     }
@@ -203,9 +202,8 @@ void thread_load(int id) {
   printf("loader %lu load finish\n", loader_id);
 }
 
-
 void thread_run(int id) {
-  bindCore(id * 2 + 1);  // bind to CPUs in NUMA that close to mlx5_2
+  bindCore(id * 2 + 1); // bind to CPUs in NUMA that close to mlx5_2
 
   dsm->registerThread();
   uint64_t my_id = kThreadCount * dsm->getMyNodeID() + id;
@@ -222,7 +220,7 @@ void thread_run(int id) {
   }
 
   // 2. load ycsb_trans
-  Request* req = new Request[MAX_THREAD_REQUEST];
+  Request *req = new Request[MAX_THREAD_REQUEST];
   int req_num = 0;
   std::ifstream trans_in(ycsb_trans_path + std::to_string(my_id));
   if (!trans_in.is_open()) {
@@ -231,42 +229,45 @@ void thread_run(int id) {
   }
   std::string op;
   int cnt = 0;
-  if (!kIsStr) {  // int workloads
+  if (!kIsStr) { // int workloads
     int range_size = 0;
     uint64_t int_k;
-    while(trans_in >> op >> int_k) {
-      if (op == "SCAN") trans_in >> range_size;
-      else range_size = 0;
+    while (trans_in >> op >> int_k) {
+      if (op == "SCAN")
+        trans_in >> range_size;
+      else
+        range_size = 0;
       Request r;
-      r.req_type = (op == "READ"  ? SEARCH : (
-                    op == "INSERT"? INSERT : (
-                    op == "UPDATE"? UPDATE : SCAN
-      )));
+      r.req_type =
+          (op == "READ"
+               ? SEARCH
+               : (op == "INSERT" ? INSERT : (op == "UPDATE" ? UPDATE : SCAN)));
       r.range_size = fix_range_size >= 0 ? fix_range_size : range_size;
       r.k = int2key(int_k);
-      req[req_num ++] = r;
-      if (++ cnt % LOAD_HEARTBEAT == 0) {
+      req[req_num++] = r;
+      if (++cnt % LOAD_HEARTBEAT == 0) {
         printf("thread %d: %d trans entries loaded.\n", id, cnt);
       }
     }
-  }
-  else {
+  } else {
     std::string str_k;
     std::string line;
     while (std::getline(trans_in, line)) {
-      if (!line.size()) continue;
+      if (!line.size())
+        continue;
       std::istringstream tmp(line);
       tmp >> op >> str_k;
       Request r;
-      r.req_type = (op == "READ"  ? SEARCH : (
-                    op == "INSERT"? INSERT : (
-                    op == "UPDATE"? UPDATE : SCAN
-      )));
-      assert(r.req_type != SCAN);  // string workloads currently does not support SCAN
+      r.req_type =
+          (op == "READ"
+               ? SEARCH
+               : (op == "INSERT" ? INSERT : (op == "UPDATE" ? UPDATE : SCAN)));
+      assert(r.req_type !=
+             SCAN); // string workloads currently does not support SCAN
       r.range_size = 0;
       r.k = str2key(str_k);
-      req[req_num ++] = r;
-      if (++ cnt % LOAD_HEARTBEAT == 0) {
+      req[req_num++] = r;
+      if (++cnt % LOAD_HEARTBEAT == 0) {
         printf("thread %d: %d trans entries loaded.\n", id, cnt);
       }
     }
@@ -292,8 +293,7 @@ void thread_run(int id) {
   // 3. start ycsb test
   if (!kIsScan && kUseCoro) {
     rolex_index->run_coroutine(gen_func, work_func, kCoroCnt, req, req_num);
-  }
-  else {
+  } else {
     /// without coro
     rolex::Timer timer;
     auto gen = new RequsetGenBench(dsm, req, req_num, 0, 0);
@@ -316,7 +316,9 @@ void thread_run(int id) {
 
 void parse_args(int argc, char *argv[]) {
   if (argc != 6 && argc != 7) {
-    printf("Usage: ./ycsb_test kNodeCount kThreadCount kCoroCnt workload_type[randint/email] workload_idx[a/b/c/d/e] [fix_range_size]\n");
+    printf("Usage: ./ycsb_test kNodeCount kThreadCount kCoroCnt "
+           "workload_type[randint/email] workload_idx[a/b/c/d/e] "
+           "[fix_range_size]\n");
     exit(-1);
   }
 
@@ -334,17 +336,21 @@ void parse_args(int argc, char *argv[]) {
     assert(false);
   }
   workloads_dir_in >> workload_dir;
-  ycsb_load_path = workload_dir + "/load_" + std::string(argv[4]) + "_workload" + std::string(argv[5]);
-  ycsb_trans_path = workload_dir + "/txn_" + std::string(argv[4]) + "_workload" + std::string(argv[5]);
+  ycsb_load_path = workload_dir + "/load_" + std::string(argv[4]) + "_workload";
+  ycsb_trans_path = workload_dir + "/txn_" + std::string(argv[4]) +
+                    "_workload" + std::string(argv[5]);
   if (argc == 7) {
-    if(kIsScan) fix_range_size = atoi(argv[6]);
+    if (kIsScan)
+      fix_range_size = atoi(argv[6]);
   }
 
-  printf("kNodeCount %d, kThreadCount %d, kCoroCnt %d\n", kNodeCount, kThreadCount, kCoroCnt);
+  printf("kNodeCount %d, kThreadCount %d, kCoroCnt %d\n", kNodeCount,
+         kThreadCount, kCoroCnt);
   printf("ycsb_load: %s\n", ycsb_load_path.c_str());
   printf("ycsb_trans: %s\n", ycsb_trans_path.c_str());
   if (argc == 7) {
-    if(kIsScan) printf("fix_range_size: %d\n", fix_range_size);
+    if (kIsScan)
+      printf("fix_range_size: %d\n", fix_range_size);
   }
 }
 
@@ -355,7 +361,7 @@ void save_latency(int epoch_id) {
     for (int k = 0; k < MAX_APP_THREAD; ++k)
       for (int j = 0; j < MAX_CORO_NUM; ++j) {
         latency_th_all[i] += latency[k][j][i];
-    }
+      }
   }
   // store in file
   std::ofstream f_out("../us_lat/epoch_" + std::to_string(epoch_id) + ".lat");
@@ -365,12 +371,12 @@ void save_latency(int epoch_id) {
       f_out << i / 10.0 << "\t" << latency_th_all[i] << std::endl;
     }
     f_out.close();
-  }
-  else {
+  } else {
     printf("Fail to write file!\n");
     assert(false);
   }
-  memset(latency, 0, sizeof(uint64_t) * MAX_APP_THREAD * MAX_CORO_NUM * LATENCY_WINDOWS);
+  memset(latency, 0,
+         sizeof(uint64_t) * MAX_APP_THREAD * MAX_CORO_NUM * LATENCY_WINDOWS);
 }
 
 void load_train_keys() {
@@ -384,28 +390,28 @@ void load_train_keys() {
   }
   Key k;
   int cnt = 0;
-  if (!kIsStr) {  // int workloads
+  if (!kIsStr) { // int workloads
     uint64_t int_k;
     while (load_in >> op >> int_k) {
       k = int2key(int_k);
       assert(op == "INSERT");
       train_keys.emplace_back(k);
-      if (++ cnt % LOAD_HEARTBEAT == 0) {
+      if (++cnt % LOAD_HEARTBEAT == 0) {
         printf("train-keys: %d load entries loaded.\n", cnt);
       }
     }
-  }
-  else {  // string workloads
+  } else { // string workloads
     std::string str_k;
     std::string line;
     while (std::getline(load_in, line)) {
-      if (!line.size()) continue;
+      if (!line.size())
+        continue;
       std::istringstream tmp(line);
       tmp >> op >> str_k;
       k = str2key(str_k);
       assert(op == "INSERT");
       train_keys.emplace_back(k);
-      if (++ cnt % LOAD_HEARTBEAT == 0) {
+      if (++cnt % LOAD_HEARTBEAT == 0) {
         printf("train-keys: %d load entries loaded.\n", cnt);
       }
     }
@@ -417,30 +423,31 @@ void load_train_keys() {
       printf("Error opening trans file\n");
       assert(false);
     }
-    if (!kIsStr) {  // int workloads
+    if (!kIsStr) { // int workloads
       uint64_t int_k;
       while (trans_in >> op >> int_k) {
         k = int2key(int_k);
-        if (op == "SCAN") trans_in >> range_size;
+        if (op == "SCAN")
+          trans_in >> range_size;
         else if (op == "INSERT") {
           train_keys.emplace_back(k);
-          if (++ cnt % LOAD_HEARTBEAT == 0) {
+          if (++cnt % LOAD_HEARTBEAT == 0) {
             printf("train-keys: %d load entries loaded.\n", cnt);
           }
         }
       }
-    }
-    else {  // string workloads
+    } else { // string workloads
       std::string str_k;
       std::string line;
       while (std::getline(trans_in, line)) {
-        if (!line.size()) continue;
+        if (!line.size())
+          continue;
         std::istringstream tmp(line);
         tmp >> op >> str_k;
         k = str2key(str_k);
         if (op == "INSERT") {
           train_keys.emplace_back(k);
-          if (++ cnt % LOAD_HEARTBEAT == 0) {
+          if (++cnt % LOAD_HEARTBEAT == 0) {
             printf("train-keys: %d load entries loaded.\n", cnt);
           }
         }
@@ -467,7 +474,7 @@ int main(int argc, char *argv[]) {
 
   dsm->barrier("benchmark");
 
-  for (int i = 0; i < kThreadCount; i ++) {
+  for (int i = 0; i < kThreadCount; i++) {
     th[i] = std::thread(thread_run, i);
   }
 
@@ -478,7 +485,7 @@ int main(int argc, char *argv[]) {
   int count = 0;
 
   clock_gettime(CLOCK_REALTIME, &s);
-  while(!need_stop) {
+  while (!need_stop) {
 
     sleep(TIME_INTERVAL);
     clock_gettime(CLOCK_REALTIME, &e);
@@ -512,7 +519,8 @@ int main(int argc, char *argv[]) {
       try_read_op_cnt += try_read_op[i];
     }
 
-    uint64_t try_read_leaf_cnt = 0, read_leaf_retry_cnt = 0, leaf_read_syn_cnt = 0;
+    uint64_t try_read_leaf_cnt = 0, read_leaf_retry_cnt = 0,
+             leaf_read_syn_cnt = 0;
     for (int i = 0; i < MAX_APP_THREAD; ++i) {
       try_read_leaf_cnt += try_read_leaf[i];
       read_leaf_retry_cnt += read_leaf_retry[i];
@@ -525,7 +533,8 @@ int main(int argc, char *argv[]) {
       split_hopscotch_cnt += split_hopscotch[i];
     }
 
-    uint64_t correct_speculative_read_cnt = 0, try_speculative_read_cnt = 0, want_speculative_read_cnt = 0;
+    uint64_t correct_speculative_read_cnt = 0, try_speculative_read_cnt = 0,
+             want_speculative_read_cnt = 0;
     for (int i = 0; i < MAX_APP_THREAD; ++i) {
       correct_speculative_read_cnt += correct_speculative_read[i];
       try_speculative_read_cnt += try_speculative_read[i];
@@ -535,7 +544,7 @@ int main(int argc, char *argv[]) {
     std::map<uint64_t, uint64_t> range_cnt_sum;
     uint64_t range_cnt_sum_total = 0;
     for (int i = 0; i < MAX_APP_THREAD; ++i) {
-      for (const auto& [range_size, cnt] : range_cnt[i]) {
+      for (const auto &[range_size, cnt] : range_cnt[i]) {
         range_cnt_sum[range_size] += cnt;
         range_cnt_sum_total += cnt;
       }
@@ -544,21 +553,25 @@ int main(int argc, char *argv[]) {
     std::fill(need_clear, need_clear + MAX_APP_THREAD, true);
 
 #ifdef EPOCH_LAT_TEST
-    save_latency(++ count);
+    save_latency(++count);
 #else
-    if (++ count == TEST_EPOCH / 2) {  // rm latency during warm up
-      memset(latency, 0, sizeof(uint64_t) * MAX_APP_THREAD * MAX_CORO_NUM * LATENCY_WINDOWS);
+    if (++count == TEST_EPOCH / 2) { // rm latency during warm up
+      memset(latency, 0,
+             sizeof(uint64_t) * MAX_APP_THREAD * MAX_CORO_NUM *
+                 LATENCY_WINDOWS);
     }
 #endif
 
     double per_node_tp = cap * 1.0 / microseconds;
-    uint64_t cluster_tp = dsm->sum((uint64_t)(per_node_tp * 1000));  // only node 0 return the sum
+    uint64_t cluster_tp =
+        dsm->sum((uint64_t)(per_node_tp * 1000)); // only node 0 return the sum
 
     printf("%d, throughput %.4f\n", dsm->getMyNodeID(), per_node_tp);
 
     if (dsm->getMyNodeID() == 1) {
-      for (const auto& [range_size, cnt] : range_cnt_sum) {
-        printf("leaf_cnt=%lu ratio=%.2lf; ", range_size, (double)cnt / range_cnt_sum_total);
+      for (const auto &[range_size, cnt] : range_cnt_sum) {
+        printf("leaf_cnt=%lu ratio=%.2lf; ", range_size,
+               (double)cnt / range_cnt_sum_total);
       }
       printf("\n\n");
     }
@@ -566,14 +579,22 @@ int main(int argc, char *argv[]) {
     if (dsm->getMyNodeID() == 0) {
       printf("epoch %d passed!\n", count);
       printf("cluster throughput %.3f Mops\n", cluster_tp / 1000.0);
-      printf("avg. lock/cas fail cnt: %.4lf\n", lock_fail_cnt * 1.0 / try_write_op_cnt);
-      printf("write combining rate: %.4lf\n", write_handover_cnt * 1.0 / try_write_op_cnt);
-      printf("read delegation rate: %.4lf\n", read_handover_cnt * 1.0 / try_read_op_cnt);
-      printf("read leaf retry rate: %.4lf\n", read_leaf_retry_cnt * 1.0 / try_read_leaf_cnt);
-      printf("read sibling leaf rate: %.4lf\n", leaf_read_syn_cnt * 1.0 / try_read_leaf_cnt);
-      printf("avg. leaf load factor: %.4lf\n", load_factor_sum_all * 1.0 / split_hopscotch_cnt);
-      printf("speculative read rate: %.4lf\n", try_speculative_read_cnt * 1.0 / want_speculative_read_cnt);
-      printf("correct ratio of speculative read: %.4lf\n", correct_speculative_read_cnt * 1.0 / try_speculative_read_cnt);
+      printf("avg. lock/cas fail cnt: %.4lf\n",
+             lock_fail_cnt * 1.0 / try_write_op_cnt);
+      printf("write combining rate: %.4lf\n",
+             write_handover_cnt * 1.0 / try_write_op_cnt);
+      printf("read delegation rate: %.4lf\n",
+             read_handover_cnt * 1.0 / try_read_op_cnt);
+      printf("read leaf retry rate: %.4lf\n",
+             read_leaf_retry_cnt * 1.0 / try_read_leaf_cnt);
+      printf("read sibling leaf rate: %.4lf\n",
+             leaf_read_syn_cnt * 1.0 / try_read_leaf_cnt);
+      printf("avg. leaf load factor: %.4lf\n",
+             load_factor_sum_all * 1.0 / split_hopscotch_cnt);
+      printf("speculative read rate: %.4lf\n",
+             try_speculative_read_cnt * 1.0 / want_speculative_read_cnt);
+      printf("correct ratio of speculative read: %.4lf\n",
+             correct_speculative_read_cnt * 1.0 / try_speculative_read_cnt);
       printf("\n");
     }
     if (count >= TEST_EPOCH) {

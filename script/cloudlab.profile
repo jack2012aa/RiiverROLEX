@@ -1,4 +1,4 @@
-"""6 machines"""
+"""Machines with cloud-init and NFS"""
 
 import geni.portal as portal
 import geni.rspec.pg as pg
