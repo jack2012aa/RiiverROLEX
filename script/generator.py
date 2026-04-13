@@ -1,10 +1,10 @@
-import random
-import os
-import multiprocessing
-import shutil
-import time
-import sys
 import array
+import multiprocessing
+import os
+import random
+import sys
+import time
+
 import numpy as np
 
 # Use Python's built-in C-style array to save memory
@@ -136,6 +136,10 @@ def main():
     with multiprocessing.Pool(processes=workers) as pool:
         for i, _ in enumerate(pool.imap_unordered(generate_partition, tasks), 1):
             print(f"\rProgress: {i}/{len(tasks)} files generated...", end="")
+
+    # 5. Mock txn file for workload e
+    with open(os.path.join(OS_PATH, "txn_randint_workloade"), "w") as f:
+        pass
 
     end_time = time.time()
     print(

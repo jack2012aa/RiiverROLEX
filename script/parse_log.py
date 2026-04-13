@@ -1,16 +1,10 @@
+import argparse
 import os
 import re
-import glob
-from collections import defaultdict
 
 
-def parse_rolex_logs(log_dir="/rfs_share/results"):
-    experiments = defaultdict(dict)
-
-    # 1. Ensure Regex supports the three-number format: <#node>_<#thread>_<#mem_node>_<u|z>_<workload>_[lf].log
-    filename_pattern = re.compile(r"^(\d+)_(\d+)_(\d+)_([uz])_([a-zA-Z]+)(_lf)?\.log$")
-
-    # 2. Regex patterns to extract performance metrics from Node 0
+def parse_rolex_logs(base_dir):
+    # 1. Regex patterns to extract performance metrics from primary.log (Node 0)
     metrics_patterns = {
         "TP_Mops": re.compile(r"cluster throughput ([\d\.]+) Mops"),
         "CAS_Fail": re.compile(r"avg\. lock/cas fail cnt: ([\d\.\-nan]+)"),
@@ -23,66 +17,77 @@ def parse_rolex_logs(log_dir="/rfs_share/results"):
         "Cache_MB": re.compile(r"consumed cache size = ([\d\.]+) MB"),
     }
 
-    # Regex pattern to extract leaf_cnt distribution from Node 1
+    # 2. Regex pattern to extract leaf_cnt distribution from secondary.log (Node 1)
     leaf_cnt_pattern = re.compile(r"leaf_cnt=(\d+) ratio=([\d\.]+);")
 
-    # 3. Scan all log files
-    log_files = glob.glob(os.path.join(log_dir, "*.log"))
-    if not log_files:
-        print("Error: No .log files found! Please check the execution directory.")
+    # 3. Recursively find all directories containing 'primary.log'
+    exp_dirs = []
+    for root, dirs, files in os.walk(base_dir):
+        if "primary.log" in files:
+            exp_dirs.append(root)
+
+    if not exp_dirs:
+        print(
+            f"Error: No 'primary.log' files found in any subdirectories of {base_dir}"
+        )
         return
 
-    print(f"Found {len(log_files)} log files. Starting to parse...\n")
+    print(f"Found {len(exp_dirs)} experiment directories. Starting to parse...\n")
 
-    for filepath in log_files:
-        filename = os.path.basename(filepath)
-        match = filename_pattern.match(filename)
+    experiments = []
 
-        if not match:
-            continue
+    for exp_dir in exp_dirs:
+        # Initialize default values for the row
+        exp_data = {
+            "Dir_Name": os.path.basename(exp_dir),
+            "Dist": "Unknown",
+            "WL": "N/A",
+            "TP_Mops": "N/A",
+            "CAS_Fail": "N/A",
+            "Sibling_Read": "N/A",
+            "Leaf_Retry": "N/A",
+            "Spec_Read_Rate": "N/A",
+            "Spec_Read_Correct": "N/A",
+            "Cache_MB": "N/A",
+            "Leaf_Distribution": "N/A",
+        }
 
-        # Extract experiment configuration
-        node, thread, mem_node, dist_code, workload, is_lf = match.groups()
-        dist = "Uniform" if dist_code == "u" else "Zipfian"
-        workload = workload.upper()
+        # Try to infer Distribution and Workload from the directory name
+        # e.g., "results/uniform_workloada_mytest" -> Dist: Uniform, WL: A
+        match = re.search(
+            r"(uniform|zipfian)_workload([a-zA-Z0-9]+)",
+            exp_data["Dir_Name"],
+            re.IGNORECASE,
+        )
+        if match:
+            exp_data["Dist"] = match.group(1).capitalize()
+            exp_data["WL"] = match.group(2).upper()
 
-        # Define Unique Key (including mem_node)
-        exp_key = (mem_node, dist, workload, node, thread)
+        primary_path = os.path.join(exp_dir, "primary.log")
+        secondary_path = os.path.join(exp_dir, "secondary.log")
 
-        if exp_key not in experiments:
-            experiments[exp_key] = {
-                "Mem": mem_node,
-                "Dist": dist,
-                "WL": workload,
-                "Node": node,
-                "Thread": thread,
-                "TP_Mops": "N/A",
-                "CAS_Fail": "N/A",
-                "Sibling_Read": "N/A",
-                "Leaf_Retry": "N/A",
-                "Spec_Read_Rate": "N/A",
-                "Spec_Read_Correct": "N/A",
-                "Cache_MB": "N/A",
-                "Leaf_Distribution": "N/A",
-            }
-
-        with open(filepath, "r") as f:
+        # Parse primary.log
+        with open(primary_path, "r") as f:
             content = f.read()
+            for metric_name, pattern in metrics_patterns.items():
+                matches = pattern.findall(content)
+                if matches:
+                    exp_data[metric_name] = matches[-1]
 
-            if is_lf:
-                # This is the LF log from Node 1, find all lines containing leaf_cnt
+        # Parse secondary.log
+        if os.path.exists(secondary_path):
+            with open(secondary_path, "r") as f:
+                content = f.read()
                 lf_lines = [line for line in content.split("\n") if "leaf_cnt=" in line]
 
                 if lf_lines:
-                    # Grab the 2nd line (index 1), if there is only 1 line, grab the 1st
                     start_line = lf_lines[1] if len(lf_lines) > 1 else lf_lines[0]
-                    # Grab the last line
                     end_line = lf_lines[-1]
 
                     start_matches = leaf_cnt_pattern.findall(start_line)
                     end_matches = leaf_cnt_pattern.findall(end_line)
 
-                    # Format as L4:86% (remove intermediate spaces to save width)
+                    # Format as L4:86%
                     fmt_start = ",".join(
                         [
                             f"L{cnt}:{float(ratio) * 100:.0f}%"
@@ -96,42 +101,50 @@ def parse_rolex_logs(log_dir="/rfs_share/results"):
                         ]
                     )
 
-                    # Combine into Start -> End string
-                    experiments[exp_key]["Leaf_Distribution"] = (
+                    exp_data["Leaf_Distribution"] = (
                         f"Start[{fmt_start}] -> End[{fmt_end}]"
                     )
-            else:
-                # This is the main log from Node 0
-                for metric_name, pattern in metrics_patterns.items():
-                    matches = pattern.findall(content)
-                    if matches:
-                        experiments[exp_key][metric_name] = matches[-1]
 
-    # 4. Sort and print plain text table
-    sorted_exps = sorted(
-        experiments.values(),
-        key=lambda x: (int(x["Mem"]), x["Dist"], x["WL"], int(x["Node"])),
-    )
+        experiments.append(exp_data)
 
-    # Set table width, allocating more space for the Start->End column
-    print("=" * 155)
-    header = f"{'Mem':<3} | {'Dist':<7} | {'WL':<2} | {'Node':<4} | {'Thrd':<4} | {'TP(Mops)':<8} | {'CAS_Fail':<8} | {'Sibling':<8} | {'Retry':<8} | {'SpecRate':<8} | {'SpecCorr':<8} | {'Cache(MB)':<9} | {'Leaf_Dist (Start -> End)'}"
+    # 4. Sort experiments (by Distribution, then Workload)
+    experiments.sort(key=lambda x: (x["Dist"], x["WL"], x["Dir_Name"]))
+
+    # 5. Print table
+    print("=" * 145)
+    header = f"{'Dist':<8} | {'WL':<3} | {'TP(Mops)':<8} | {'CAS_Fail':<8} | {'Sibling':<8} | {'Retry':<8} | {'SpecRate':<8} | {'SpecCorr':<8} | {'Cache(MB)':<9} | {'Leaf_Dist (Start -> End)'}"
     print(header)
-    print("-" * 155)
+    print("-" * 145)
 
-    for exp in sorted_exps:
+    for exp in experiments:
         row = (
-            f"{exp['Mem']:<3} | {exp['Dist']:<7} | {exp['WL']:<2} | {exp['Node']:<4} | {exp['Thread']:<4} | "
+            f"{exp['Dist']:<8} | {exp['WL']:<3} | "
             f"{exp['TP_Mops']:<8} | {exp['CAS_Fail']:<8} | {exp['Sibling_Read']:<8} | {exp['Leaf_Retry']:<8} | "
             f"{exp['Spec_Read_Rate']:<8} | {exp['Spec_Read_Correct']:<8} | {exp['Cache_MB']:<9} | {exp['Leaf_Distribution']}"
         )
         print(row)
 
-    print("=" * 155)
+    print("=" * 145)
     print(
-        f"Parsing complete! Successfully merged {len(sorted_exps)} experiment records.\n"
+        f"Parsing complete! Successfully parsed {len(experiments)} experiment records.\n"
     )
 
 
 if __name__ == "__main__":
-    parse_rolex_logs()
+    parser = argparse.ArgumentParser(
+        description="Parse ROLEX benchmark logs from specified directory."
+    )
+    parser.add_argument(
+        "log_dir",
+        type=str,
+        nargs="?",
+        default="./results",
+        help="Target directory containing the test result folders (default: ./results)",
+    )
+    args = parser.parse_args()
+
+    target_path = os.path.abspath(args.log_dir)
+    if not os.path.isdir(target_path):
+        print(f"Error: The specified path '{target_path}' is not a valid directory.")
+    else:
+        parse_rolex_logs(target_path)

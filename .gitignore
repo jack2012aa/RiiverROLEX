@@ -13,3 +13,4 @@ exp/results
 *__pycache__
 *authorized_keys
 *.pub
+.venv
