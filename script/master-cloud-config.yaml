@@ -1,0 +1,59 @@
+#cloud-config
+# Dependencies
+package_update: true
+packages:
+  - nfs-kernel-server
+  - memcached
+  - libmemcached-dev
+  - libnuma-dev
+  - build-essential
+  - cmake
+  - git
+  - python3
+  - python3-pip
+
+write_files:
+  # NFS
+  - path: /etc/exports
+    content: |
+      /nfs_share 10.10.1.0/24(rw,sync,no_root_squash,no_subtree_check)
+    append: true
+  # Memcached
+  - path: /etc/sysctl.d/90-rolex-hugepages.conf
+    content: |
+      vm.nr_hugepages=36000
+
+runcmd:
+  # NFS
+  - mkdir -p /nfs_share
+  - chmod 777 /nfs_share
+  - exportfs -a
+  - systemctl restart nfs-kernel-server
+
+  # Memcached
+  - sed -i 's/^-l .*/-l 0.0.0.0/' /etc/memcached.conf
+  - systemctl restart memcached
+
+  # ROLEX
+  - cd /nfs_share
+  - git clone https://github.com/jack2012aa/RiiverROLEX.git
+  - chmod +x -R /nfs_share/ROLEX/script
+
+  # Other dependencies
+  - systemctl mask opensmd.service # Prevent collision
+  - /nfs_share/ROLEX/script/installLibs.sh
+  - /nfs_share/ROLEX/script/installMLNX.sh
+
+  # Unlimit IOMMU
+  - sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="/GRUB_CMDLINE_LINUX_DEFAULT="iommu=pt amd_iommu=off /' /etc/default/grub
+  - update-grub
+
+  # Compile
+  - mkdir -p /nfs_share/ROLEX/build
+  - cd /nfs_share/ROLEX/build && cmake .. && make -j
+
+# Restart to use the new driver and iommu setting
+power_state:
+  mode: reboot
+  message: "Cloud-init finished, rebooting to apply MLNX and GRUB changes"
+  condition: True

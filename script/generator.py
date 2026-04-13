@@ -78,7 +78,7 @@ def generate_partition(args):
                     f.write(f"{op} {key}\n")
                 else:
                     op = "INSERT"
-                    if dist == "zipfian:
+                    if dist == "zipfian":
                         key = (1 << 60) + (i * 256) + int(client_id)
                     f.write(f"{op} {key}\n")
 
