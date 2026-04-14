@@ -14,3 +14,4 @@ exp/results
 *authorized_keys
 *.pub
 .venv
+result/*

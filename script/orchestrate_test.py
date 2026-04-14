@@ -8,6 +8,9 @@ from time import sleep
 from fabric import Connection, ThreadingGroup
 
 TIMEOUT_SEC = 10 * 60
+master_promise = None
+helper_promise = None
+workers_promise = None
 
 
 def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
@@ -62,6 +65,7 @@ def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
 def run_test(
     master: Connection, helper: Connection, workers: ThreadingGroup, name: str
 ):
+    global master_promise, helper_promise, workers_promise
     dists = ["uniform", "zipfian"]
     workloads = ["a", "b", "c", "d", "e", "f"]
     working_dir = "/nfs_share/RiiverROLEX/build"
@@ -69,6 +73,7 @@ def run_test(
 
     for dist in dists:
         for workload in workloads:
+            set_up(master, helper, workers)
             command = f"{executable} {2 + len(workers)} 24 8 randint {dist} {workload}"
             if workload == "e":
                 command += " 100"
@@ -76,28 +81,50 @@ def run_test(
             primary_log = (
                 f"/nfs_share/results/primary_log_{dist}_workload{workload}_{name}.log"
             )
-            master.run(
+            master_promise = master.run(
                 f"cd {working_dir} && {command} > {primary_log} 2>&1",
+                asynchronous=True,
+                timeout=TIMEOUT_SEC,
+                hide=True,
+                warn=True,
+            )
+            sleep(1)
+
+            secondary_log = (
+                f"/nfs_share/results/secondary_log_{dist}_workload{workload}_{name}.log"
+            )
+            helper_promise = helper.run(
+                f"cd {working_dir} && {command} > {secondary_log} 2>&1",
+                hide=True,
+                warn=True,
                 asynchronous=True,
                 timeout=TIMEOUT_SEC,
             )
             sleep(1)
 
-            should_be_async = len(workers) != 0
-            secondary_log = (
-                f"/nfs_share/results/secondary_log_{dist}_workload{workload}_{name}.log"
-            )
-            helper.run(
-                f"cd {working_dir} && {command} 2>&1",
-                hide=True,
-                asynchronous=should_be_async,
-            )
-            sleep(1)
-
             debug_log = f"~/debug/debug_{dist}_{workload}_{name}.log"
-            result = workers.run(
-                f'cd {working_dir} && {command} > "{debug_log}"', hide=True, warn=True
+            workers_promise = workers.run(
+                f'cd {working_dir} && {command} > "{debug_log}"',
+                hide=True,
+                warn=True,
+                asynchronous=True,
+                timeout=TIMEOUT_SEC,
             )
+
+            while not master_promise.runner.process_is_finished:
+                try:
+                    tail_result = master.run(
+                        f"tail -n 3 {primary_log}", hide=True, warn=True
+                    )
+                    if tail_result.stdout.strip():
+                        print("Progress:\n", tail_result.stdout.strip())
+                except Exception:
+                    pass
+                sleep(5)
+
+            master_promise.join()
+            helper_promise.join()
+            workers_promise.join()
 
             def aggregate_test_result():
                 logging.info("aggregating test results...")
@@ -115,9 +142,9 @@ def run_test(
                 except:
                     logging.warning("failed to get log files")
 
-            if result.failed:
+            if master_promise.failed:
                 aggregate_test_result()
-                raise RuntimeError("test failed")
+                raise RuntimeError(master_promise.stderr.strip())
             logging.info(f"{dist} workload {workload} completed")
             aggregate_test_result()
 
@@ -127,9 +154,21 @@ def run_test(
 
 def tear_down(master: Connection, helper: Connection, workers: ThreadingGroup):
     logging.info("tearing down...")
-    master.sudo("pkill -9 ycsb_test", hide=True, warn=True)
-    helper.sudo("pkill -9 ycsb_test", hide=True, warn=True)
-    workers.sudo("pkill -9 ycsb_test", hide=True, warn=True)
+    try:
+        master.sudo("pkill -9 ycsb_test", hide=True, warn=True)
+        master_promise.join()
+    except:
+        pass
+    try:
+        helper.sudo("pkill -9 ycsb_test", hide=True, warn=True)
+        helper_promise.join()
+    except:
+        pass
+    try:
+        workers.sudo("pkill -9 ycsb_test", hide=True, warn=True)
+        workers_promise.join()
+    except:
+        pass
     master.close()
     helper.close()
     workers.close()
