@@ -64,30 +64,40 @@ def run_test(
 ):
     dists = ["uniform", "zipfian"]
     workloads = ["a", "b", "c", "d", "e", "f"]
-    executable = "/nfs_share/RiiverROLEX/build/ycsb_test"
+    working_dir = "/nfs_share/RiiverROLEX/build"
+    executable = f"{working_dir}/ycsb_test"
 
     for dist in dists:
         for workload in workloads:
-            logging.info(f"start running {dist} workload {workload}")
             command = f"{executable} {2 + len(workers)} 24 8 randint {dist} {workload}"
             if workload == "e":
                 command += " 100"
+            logging.info(f"start running test command: {command}")
             primary_log = (
                 f"/nfs_share/results/primary_log_{dist}_workload{workload}_{name}.log"
             )
-            master.sudo(
-                f'{command} > "{primary_log}" 2>&1 &', hide=True, timeout=TIMEOUT_SEC
+            master.run(
+                f"cd {working_dir} && {command} > {primary_log} 2>&1",
+                asynchronous=True,
+                timeout=TIMEOUT_SEC,
             )
             sleep(1)
 
+            should_be_async = len(workers) != 0
             secondary_log = (
                 f"/nfs_share/results/secondary_log_{dist}_workload{workload}_{name}.log"
             )
-            helper.sudo(f'{command} > "{secondary_log}" 2>&1 &', hide=True)
+            helper.run(
+                f"cd {working_dir} && {command} 2>&1",
+                hide=True,
+                asynchronous=should_be_async,
+            )
             sleep(1)
 
             debug_log = f"~/debug/debug_{dist}_{workload}_{name}.log"
-            result = workers.sudo(f'{command} > "{debug_log}"', hide=True, warn=True)
+            result = workers.run(
+                f'cd {working_dir} && {command} > "{debug_log}"', hide=True, warn=True
+            )
 
             def aggregate_test_result():
                 logging.info("aggregating test results...")
