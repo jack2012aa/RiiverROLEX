@@ -32,7 +32,8 @@ def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
     if no_uniform or no_zipfian:
         logging.info("generating data set...")
         result = master.run(
-            "python3 /nfs_share/RiiverROLEX/script/generator.py", hide=True, warn=True
+            f"python3 /nfs_share/RiiverROLEX/script/generator.py -n {2 + len(workers)}",
+            warn=True,
         )
         if "No such file" in result.stdout:
             logging.error("nfs_share not mounted or code is not clone correctly")
@@ -127,6 +128,7 @@ def tear_down(master: Connection, helper: Connection, workers: ThreadingGroup):
 def main():
     logging.basicConfig(
         level=logging.INFO,
+        stream=sys.stdout,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
@@ -134,12 +136,20 @@ def main():
         prog="Orchestrate ROLEX benchmarks", description="Orchestrate ROLEX benchmarks"
     )
     _ = parser.add_argument(
-        "-e", "--endpoints", type=str, nargs="+", help="test servers' endpoints"
+        "-e",
+        "--endpoints",
+        type=str,
+        required=True,
+        nargs="+",
+        help="test servers' endpoints",
     )
-    _ = parser.add_argument("-n", "--name", type=str, help="name of this test")
+    _ = parser.add_argument(
+        "-n", "--name", type=str, required=True, help="name of this test"
+    )
 
     args = parser.parse_args()
     endpoints: list[str] = args.endpoints
+    logging.info(endpoints)
     if len(endpoints) < 2:
         logging.error(f"number of nodes should be greater than 1, got {len(endpoints)}")
         sys.exit(1)
@@ -159,3 +169,7 @@ def main():
         logging.info("stopping the test...")
     finally:
         tear_down(master, helper, workers)
+
+
+if __name__ == "__main__":
+    main()
