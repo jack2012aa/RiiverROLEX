@@ -17,17 +17,17 @@ def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
         "No such file"
         in master.run(
             "ls /nfs_share/workloads/uniform/load_randint_workload",
-            hide=True,
             warn=True,
-        ).stdout
+            hide=True,
+        ).stderr
     )
     no_zipfian = (
         "No such file"
         in master.run(
             "ls /nfs_share/workloads/zipfian/load_randint_workload",
-            hide=True,
             warn=True,
-        ).stdout
+            hide=True,
+        ).stderr
     )
     if no_uniform or no_zipfian:
         logging.info("generating data set...")
@@ -35,8 +35,8 @@ def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
             f"python3 /nfs_share/RiiverROLEX/script/generator.py -n {2 + len(workers)}",
             warn=True,
         )
-        if "No such file" in result.stdout:
-            logging.error("nfs_share not mounted or code is not clone correctly")
+        if "No such file" in result.stderr:
+            logging.error(result.stderr)
             sys.exit(1)
         elif "Done" not in result.stdout:
             logging.error("something wrong happens when generating data set")

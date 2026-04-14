@@ -96,6 +96,7 @@ def main():
 
     for dist in ["uniform", "zipfian"]:
         OS_PATH = os.path.join("nfs_share", "workloads", dist)
+        os.makedirs(OS_PATH, exist_ok=True)
         TOTAL_CLIENTS = NUM_NODES * THREADS_PER_NODE
         TOTAL_KEYS = TOTAL_CLIENTS * KEYS_PER_THREAD
         print(f"[Info] Total threads: {TOTAL_CLIENTS}, Total keys: {TOTAL_KEYS}")
