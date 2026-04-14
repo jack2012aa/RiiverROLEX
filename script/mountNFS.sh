@@ -1,4 +1,8 @@
 #!/bin/bash
 apt update && apt install nfs-common
 mkdir -p /nfs_share
-echo "10.10.1.1:/nfs_share  /nfs_share  nfs  defaults  0  0" | sudo tee -a /etc/fstab
+
+MOUNT="10.10.1.1:/nfs_share  /nfs_share  nfs  defaults  0  0" 
+if ! grep -qF $MOUNT /etc/exports; then
+    echo $MOUNT | sudo tee -a /etc/fstab
+fi
