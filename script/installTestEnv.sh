@@ -15,4 +15,4 @@ echo "blocking IOMMU..."
 sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="/GRUB_CMDLINE_LINUX_DEFAULT="iommu=pt amd_iommu=off /' /etc/default/grub
 update-grub
 
-
+mkdir -p ~/debug

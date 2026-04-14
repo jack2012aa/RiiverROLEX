@@ -19,3 +19,4 @@ systemctl restart nfs-kernel-server
 
 mkdir -p /nfs_share/workloads/uniform
 mkdir -p /nfs_share/workloads/zipfian
+mkdir -p /nfs_share/results
