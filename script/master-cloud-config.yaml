@@ -18,7 +18,7 @@ write_files:
     content: |
       /nfs_share 10.10.1.0/24(rw,sync,no_root_squash,no_subtree_check)
     append: true
-  # Memcached
+  # Huge page
   - path: /etc/sysctl.d/90-rolex-hugepages.conf
     content: |
       vm.nr_hugepages=36000
