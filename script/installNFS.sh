@@ -4,6 +4,7 @@ apt update && apt install nfs-kernel-server
 echo "setting NFS..."
 mkdir -p /nfs_share
 chmod 777 /nfs_share
+sudo chown -R $USER:$USER /nfs_share
 # Set white list
 echo "rpcbind: 10.10.1.0/24" | sudo tee -a /etc/hosts.allow
 sudo sed -i 's/-h 127.0.0.1//g' /etc/default/rpcbind
