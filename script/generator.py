@@ -1,3 +1,4 @@
+import argparse
 import array
 import multiprocessing
 import os
@@ -77,12 +78,15 @@ def generate_partition(args):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    _ = parser.add_argument("-n", "--nodes", type=int, help="Number of nodes")
+    args = parser.parse_args()
     global global_all_keys
 
     print("=== YCSB Pro Generator (Zipfian & Custom Workloads) ===")
 
     try:
-        NUM_NODES = int(input("Num nodes (e.g., 6): "))
+        NUM_NODES = int(args.nodes)
     except ValueError:
         print("Invalid input.")
         sys.exit(1)
