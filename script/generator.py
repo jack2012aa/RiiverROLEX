@@ -83,68 +83,63 @@ def main():
 
     try:
         NUM_NODES = int(input("Num nodes (e.g., 6): "))
-        THREADS_PER_NODE = int(input("Threads per node (e.g., 24): "))
-        KEYS_PER_THREAD = int(input("Keys per thread (e.g., 2700000): "))
-        dist = input("Distribution ('uniform' or 'zipfian'): ").strip().lower()
     except ValueError:
         print("Invalid input.")
         sys.exit(1)
 
-    if dist not in [
-        "uniform",
-        "zipfian",
-    ]:
-        print("Error: Invalid distribution type.")
-        sys.exit(1)
+    THREADS_PER_NODE = 24
+    KEYS_PER_THREAD = 2700000
 
-    OS_PATH = os.path.join("nfs_share", "workloads", dist)
-    TOTAL_CLIENTS = NUM_NODES * THREADS_PER_NODE
-    TOTAL_KEYS = TOTAL_CLIENTS * KEYS_PER_THREAD
+    for dist in ["uniform", "zipfian"]:
+        OS_PATH = os.path.join("nfs_share", "workloads", dist)
+        TOTAL_CLIENTS = NUM_NODES * THREADS_PER_NODE
+        TOTAL_KEYS = TOTAL_CLIENTS * KEYS_PER_THREAD
+        print(f"[Info] Total threads: {TOTAL_CLIENTS}, Total keys: {TOTAL_KEYS}")
 
-    print(f"\n[Info] Distribution: {dist.upper()}")
-    print(f"[Info] Total threads: {TOTAL_CLIENTS}, Total keys: {TOTAL_KEYS}")
+        start_time = time.time()
 
-    start_time = time.time()
-
-    # 1. Generate shared Key array
-    print("\n[Step 1] Generating base key array (Memory Optimized)...")
-    global_all_keys = array.array(
-        "Q", (random.getrandbits(60) for _ in range(TOTAL_KEYS))
-    )
-
-    # 2. Generate load file for training
-    print("\n[Step 2] Generating base load file for training...")
-    base_load_path = os.path.join(OS_PATH, "load_randint_workload")
-    with open(base_load_path, "w") as f:
-        for key in global_all_keys:
-            f.write(f"INSERT {key}\n")
-
-    # 3. Prepare multiprocessing tasks
-    print(f"\n[Step 3] Preparing {TOTAL_CLIENTS} partition tasks...")
-    tasks = []
-    for i in range(TOTAL_CLIENTS):
-        start_idx = i * KEYS_PER_THREAD
-        end_idx = start_idx + KEYS_PER_THREAD
-        tasks.append(
-            (i, start_idx, end_idx, KEYS_PER_THREAD, dist, TOTAL_KEYS, OS_PATH)
+        # 1. Generate shared Key array
+        print("\n[Step 1] Generating base key array (Memory Optimized)...")
+        global_all_keys = array.array(
+            "Q", (random.getrandbits(60) for _ in range(TOTAL_KEYS))
         )
 
-    # 4. Launch multi-core generation
-    workers = min(multiprocessing.cpu_count(), 16)
-    print(f"\n[Step 4] Launching {workers} workers to generate files...")
+        # 2. Generate load file for training
+        print("\n[Step 2] Generating base load file for training...")
+        base_load_path = os.path.join(OS_PATH, "load_randint_workload")
+        with open(base_load_path, "w") as f:
+            for key in global_all_keys:
+                f.write(f"INSERT {key}\n")
 
-    with multiprocessing.Pool(processes=workers) as pool:
-        for i, _ in enumerate(pool.imap_unordered(generate_partition, tasks), 1):
-            print(f"\rProgress: {i}/{len(tasks)} files generated...", end="")
+        # 3. Prepare multiprocessing tasks
+        print(f"\n[Step 3] Preparing {TOTAL_CLIENTS} partition tasks...")
+        tasks = []
+        for i in range(TOTAL_CLIENTS):
+            start_idx = i * KEYS_PER_THREAD
+            end_idx = start_idx + KEYS_PER_THREAD
+            tasks.append(
+                (i, start_idx, end_idx, KEYS_PER_THREAD, dist, TOTAL_KEYS, OS_PATH)
+            )
 
-    # 5. Mock txn file for workload e
-    with open(os.path.join(OS_PATH, "txn_randint_workloade"), "w") as f:
-        pass
+        # 4. Launch multi-core generation
+        workers = min(multiprocessing.cpu_count(), 16)
+        print(f"\n[Step 4] Launching {workers} workers to generate files...")
 
-    end_time = time.time()
-    print(
-        f"\n\nDone! Generated {TOTAL_KEYS} ops in {end_time - start_time:.2f} seconds."
-    )
+        with multiprocessing.Pool(processes=workers) as pool:
+            for i, _ in enumerate(pool.imap_unordered(generate_partition, tasks), 1):
+                print(f"\rProgress: {i}/{len(tasks)} files generated...", end="")
+
+        # 5. Mock txn file for workload e and f
+        with open(os.path.join(OS_PATH, "txn_randint_workloade"), "w") as f:
+            pass
+
+        with open(os.path.join(OS_PATH, "txn_randint_workloadf"), "w") as f:
+            pass
+
+        end_time = time.time()
+        print(
+            f"\n\nDone! Generated {TOTAL_KEYS} ops in {end_time - start_time:.2f} seconds."
+        )
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ from time import sleep
 
 from fabric import Connection, ThreadingGroup
 
+TIMEOUT_SEC = 10 * 60
+
 
 def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
     logging.info("setting up...")
@@ -41,8 +43,6 @@ def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
             sys.exit(1)
 
     # Create path
-    master.run("mkdir -p ~/debug", hide=True)
-    helper.run("mkdir -p ~/debug", hide=True)
     workers.run("mkdir -p ~/debug", hide=True)
 
     # Initialize Memcached
@@ -74,7 +74,9 @@ def run_test(
             primary_log = (
                 f"/nfs_share/results/primary_log_{dist}_workload{workload}_{name}.log"
             )
-            master.sudo(f'{command} > "{primary_log}" 2>&1 &', hide=True)
+            master.sudo(
+                f'{command} > "{primary_log}" 2>&1 &', hide=True, timeout=TIMEOUT_SEC
+            )
             sleep(1)
 
             secondary_log = (
@@ -108,10 +110,12 @@ def run_test(
             logging.info(f"{dist} workload {workload} completed")
             aggregate_test_result()
 
+    logging.info("all tests are completed, parsing results...")
     subprocess.run("python parse_log.py")
 
 
 def tear_down(master: Connection, helper: Connection, workers: ThreadingGroup):
+    logging.info("tearing down...")
     master.sudo("pkill -9 ycsb_test", hide=True, warn=True)
     helper.sudo("pkill -9 ycsb_test", hide=True, warn=True)
     workers.sudo("pkill -9 ycsb_test", hide=True, warn=True)
@@ -151,5 +155,7 @@ def main():
         run_test(master, helper, workers, name)
     except Exception as e:
         logging.error(e)
+    except KeyboardInterrupt:
+        logging.info("stopping the test...")
     finally:
         tear_down(master, helper, workers)

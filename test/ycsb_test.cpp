@@ -315,10 +315,11 @@ void thread_run(int id) {
 }
 
 void parse_args(int argc, char *argv[]) {
-  if (argc != 6 && argc != 7) {
-    printf("Usage: ./ycsb_test kNodeCount kThreadCount kCoroCnt "
-           "workload_type[randint/email] workload_idx[a/b/c/d/e] "
-           "[fix_range_size]\n");
+  if (argc != 7 && argc != 8) {
+    printf(
+        "Usage: ./ycsb_test kNodeCount kThreadCount kCoroCnt "
+        "workload_type[randint/email] distribution workload_idx[a/b/c/d/e/f] "
+        "[fix_range_size]\n");
     exit(-1);
   }
 
@@ -326,8 +327,10 @@ void parse_args(int argc, char *argv[]) {
   kThreadCount = atoi(argv[2]);
   kCoroCnt = atoi(argv[3]);
   kIsStr = (std::string(argv[4]) == "email");
-  kIsScan = (std::string(argv[5]) == "e");
-  kIsInsert = ((std::string(argv[5]) == "la") || (std::string(argv[5]) == "e"));
+  std::string distribution = std::string(argv[5]);
+  kIsScan = (std::string(argv[6]) == "e");
+  kIsInsert = ((std::string(argv[6]) == "la") ||
+               (std::string(argv[6]) == "e") || (std::string(argv[6]) == "f"));
 
   std::string workload_dir;
   std::ifstream workloads_dir_in("../workloads.conf");
@@ -336,10 +339,11 @@ void parse_args(int argc, char *argv[]) {
     assert(false);
   }
   workloads_dir_in >> workload_dir;
-  ycsb_load_path = workload_dir + "/load_" + std::string(argv[4]) + "_workload";
-  ycsb_trans_path = workload_dir + "/txn_" + std::string(argv[4]) +
-                    "_workload" + std::string(argv[5]);
-  if (argc == 7) {
+  ycsb_load_path = workload_dir + "/" + distribution + "/load_" +
+                   std::string(argv[4]) + "_workload";
+  ycsb_trans_path = workload_dir + "/" + distribution + "/txn_" +
+                    std::string(argv[4]) + "_workload" + std::string(argv[6]);
+  if (argc == 8) {
     if (kIsScan)
       fix_range_size = atoi(argv[6]);
   }
@@ -348,7 +352,7 @@ void parse_args(int argc, char *argv[]) {
          kThreadCount, kCoroCnt);
   printf("ycsb_load: %s\n", ycsb_load_path.c_str());
   printf("ycsb_trans: %s\n", ycsb_trans_path.c_str());
-  if (argc == 7) {
+  if (argc == 8) {
     if (kIsScan)
       printf("fix_range_size: %d\n", fix_range_size);
   }
