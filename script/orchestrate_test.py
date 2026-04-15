@@ -114,17 +114,20 @@ def run_test(
             while not master_promise.runner.process_is_finished:
                 try:
                     tail_result = master.run(
-                        f"tail -n 3 {primary_log}", hide=True, warn=True
+                        f"tail -n 1 {primary_log}", hide=True, warn=True
                     )
                     if tail_result.stdout.strip():
-                        print("Progress:\n", tail_result.stdout.strip())
+                        print(
+                            f"\rProgress: {tail_result.stdout.strip()}",
+                            end="",
+                            flush=True,
+                        )
                 except Exception:
                     pass
                 sleep(5)
 
-            master_promise.join()
+            result = master_promise.join()
             helper_promise.join()
-            workers_promise.join()
 
             def aggregate_test_result():
                 logging.info("aggregating test results...")
@@ -142,9 +145,9 @@ def run_test(
                 except:
                     logging.warning("failed to get log files")
 
-            if master_promise.failed:
+            if result.failed:
                 aggregate_test_result()
-                raise RuntimeError(master_promise.stderr.strip())
+                raise RuntimeError(result.stderr.strip())
             logging.info(f"{dist} workload {workload} completed")
             aggregate_test_result()
 
@@ -166,7 +169,6 @@ def tear_down(master: Connection, helper: Connection, workers: ThreadingGroup):
         pass
     try:
         workers.sudo("pkill -9 ycsb_test", hide=True, warn=True)
-        workers_promise.join()
     except:
         pass
     master.close()
