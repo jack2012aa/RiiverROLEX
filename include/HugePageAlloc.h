@@ -11,7 +11,11 @@
 #include <numaif.h>
 #include <sys/mman.h>
 
+#ifdef CXL
 #define NUMA_NODE 1 // [CONFIG] 1   (check from numastat)
+#else
+#define NUMA_NODE 0
+#endif
 
 char *getIP();
 inline void *hugePageAlloc(size_t size) {
@@ -21,7 +25,6 @@ inline void *hugePageAlloc(size_t size) {
     Debug::notifyError("%s mmap failed!\n", getIP());
   }
 
-#ifdef CXL
   unsigned long nodemask = (1UL << NUMA_NODE);
   int ret = mbind(res, size, MPOL_BIND, &nodemask, sizeof(nodemask) * 8 + 1, 0);
   if (ret != 0) {
@@ -30,7 +33,6 @@ inline void *hugePageAlloc(size_t size) {
         NUMA_NODE);
     exit(-1);
   }
-#endif
 
   return res;
 }
