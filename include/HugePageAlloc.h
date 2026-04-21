@@ -9,6 +9,7 @@
 #include <memory.h>
 #include <numa.h>
 #include <numaif.h>
+#include <sys/mman.h>
 
 #define NUMA_NODE 1 // [CONFIG] 1   (check from numastat)
 

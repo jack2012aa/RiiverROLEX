@@ -6,6 +6,7 @@ import sys
 from time import sleep
 
 from fabric import Connection, ThreadingGroup
+from fabric.runners import Result
 
 TIMEOUT_SEC = 10 * 60
 master_promise = None
@@ -88,46 +89,59 @@ def run_test(
                 hide=True,
                 warn=True,
             )
+            logging.info("master started")
             sleep(1)
 
-            secondary_log = (
+            helper_log = (
                 f"/nfs_share/results/secondary_log_{dist}_workload{workload}_{name}.log"
             )
             helper_promise = helper.run(
-                f"cd {working_dir} && {command} > {secondary_log} 2>&1",
+                f"cd {working_dir} && {command} > {helper_log} 2>&1",
                 hide=True,
                 warn=True,
                 asynchronous=True,
                 timeout=TIMEOUT_SEC,
             )
+            logging.info("helper started")
             sleep(1)
 
             debug_log = f"~/debug/debug_{dist}_{workload}_{name}.log"
             workers_promise = workers.run(
-                f'cd {working_dir} && {command} > "{debug_log}"',
+                f"cd {working_dir} && {command} > {debug_log} 2>&1",
                 hide=True,
                 warn=True,
                 asynchronous=True,
                 timeout=TIMEOUT_SEC,
             )
+            logging.info("workers started")
 
-            while not master_promise.runner.process_is_finished:
+            stop = False
+            while not stop:
+                stop = (
+                    master_promise.runner.process_is_finished
+                    or helper_promise.runner.process_is_finished
+                )
+                for promise in workers_promise.values():
+                    stop = stop or promise.runner.process_is_finished
                 try:
-                    tail_result = master.run(
+                    master_result = master.run(
                         f"tail -n 1 {primary_log}", hide=True, warn=True
                     )
-                    if tail_result.stdout.strip():
-                        print(
-                            f"\rProgress: {tail_result.stdout.strip()}",
-                            end="",
-                            flush=True,
-                        )
-                except Exception:
-                    pass
+                    helper_result = helper.run(
+                        f"tail -n 1 {helper_log}", hide=True, warn=True
+                    )
+                    workers_results = workers.run(
+                        f"tail -n 1 {debug_log}", hide=True, warn=True
+                    )
+                    logging.info(f"master: {master_result.stdout.strip()}")
+                    logging.info(f"helper: {helper_result.stdout.strip()}")
+                    for worker, result in workers_results.items():
+                        logging.info(f"worker {worker.host}: {result.stdout.strip()}")
+                except Exception as e:
+                    logging.error(f"error when parsing logs: {e}")
                 sleep(5)
 
-            result = master_promise.join()
-            helper_promise.join()
+            results = kill_and_join(master, helper, workers)
 
             def aggregate_test_result():
                 logging.info("aggregating test results...")
@@ -135,7 +149,7 @@ def run_test(
                 os.makedirs(result_dir, exist_ok=True)
                 try:
                     master.get(primary_log, os.path.join(result_dir, "primary.log"))
-                    helper.get(secondary_log, os.path.join(result_dir, "secondary.log"))
+                    helper.get(helper_log, os.path.join(result_dir, "secondary.log"))
                     i = 2
                     for worker in workers:
                         worker.get(
@@ -145,32 +159,42 @@ def run_test(
                 except:
                     logging.warning("failed to get log files")
 
-            if result.failed:
-                aggregate_test_result()
-                raise RuntimeError(result.stderr.strip())
             logging.info(f"{dist} workload {workload} completed")
+            for result in results:
+                if result.failed:
+                    logging.error(result.stderr)
             aggregate_test_result()
 
     logging.info("all tests are completed, parsing results...")
     subprocess.run("python parse_log.py")
 
 
-def tear_down(master: Connection, helper: Connection, workers: ThreadingGroup):
-    logging.info("tearing down...")
+def kill_and_join(
+    master: Connection, helper: Connection, workers: ThreadingGroup
+) -> list[Result]:
+    results = []
     try:
         master.sudo("pkill -9 ycsb_test", hide=True, warn=True)
-        master_promise.join()
+        results.append(master_promise.join())
     except:
         pass
     try:
         helper.sudo("pkill -9 ycsb_test", hide=True, warn=True)
-        helper_promise.join()
+        results.append(helper_promise.join())
     except:
         pass
     try:
         workers.sudo("pkill -9 ycsb_test", hide=True, warn=True)
+        for promise in workers_promise.values():
+            results.append(promise.join())
     except:
         pass
+    return results
+
+
+def tear_down(master: Connection, helper: Connection, workers: ThreadingGroup):
+    logging.info("tearing down...")
+    kill_and_join(master, helper, workers)
     master.close()
     helper.close()
     workers.close()
