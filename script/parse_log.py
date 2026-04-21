@@ -39,6 +39,7 @@ def parse_rolex_logs(base_dir):
     for exp_dir in exp_dirs:
         # Initialize default values for the row
         exp_data = {
+            "Name": exp_dir.split("_")[-1],
             "Dir_Name": os.path.basename(exp_dir),
             "Dist": "Unknown",
             "WL": "N/A",
@@ -112,13 +113,13 @@ def parse_rolex_logs(base_dir):
 
     # 5. Print table
     print("=" * 145)
-    header = f"{'Dist':<8} | {'WL':<3} | {'TP(Mops)':<8} | {'CAS_Fail':<8} | {'Sibling':<8} | {'Retry':<8} | {'SpecRate':<8} | {'SpecCorr':<8} | {'Cache(MB)':<9} | {'Leaf_Dist (Start -> End)'}"
+    header = f"{'Name':<8} | {'Dist':<8} | {'WL':<3} | {'TP(Mops)':<8} | {'CAS_Fail':<8} | {'Sibling':<8} | {'Retry':<8} | {'SpecRate':<8} | {'SpecCorr':<8} | {'Cache(MB)':<9} | {'Leaf_Dist (Start -> End)'}"
     print(header)
     print("-" * 145)
 
     for exp in experiments:
         row = (
-            f"{exp['Dist']:<8} | {exp['WL']:<3} | "
+            f"{exp['Name']:<8} | {exp['Dist']:<8} | {exp['WL']:<3} | "
             f"{exp['TP_Mops']:<8} | {exp['CAS_Fail']:<8} | {exp['Sibling_Read']:<8} | {exp['Leaf_Retry']:<8} | "
             f"{exp['Spec_Read_Rate']:<8} | {exp['Spec_Read_Correct']:<8} | {exp['Cache_MB']:<9} | {exp['Leaf_Distribution']}"
         )
