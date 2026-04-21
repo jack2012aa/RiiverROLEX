@@ -12,15 +12,25 @@
 #include <sys/mman.h>
 
 #ifdef CXL
-#define NUMA_NODE 1 // [CONFIG] 1   (check from numastat)
-#else
 #define NUMA_NODE 0
+#else
+#define NUMA_NODE 1
 #endif
 
 char *getIP();
 inline void *hugePageAlloc(size_t size) {
-  void *res = mmap(NULL, size, PROT_READ | PROT_WRITE,
-                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+  if (size == 0) {
+    return nullptr;
+  }
+
+  const size_t HUGE_PAGE_SIZE = 2 * 1024 * 1024; // 2MB
+  size_t aligned_size =
+      ((size + HUGE_PAGE_SIZE - 1) / HUGE_PAGE_SIZE) * HUGE_PAGE_SIZE;
+  printf("Allocating %dB memory\n", aligned_size);
+
+  void *res =
+      mmap(NULL, size, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_POPULATE, -1, 0);
   if (res == MAP_FAILED) {
     Debug::notifyError("%s mmap failed!\n", getIP());
   }
