@@ -609,13 +609,13 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < kThreadCount; ++i) {
       uint64_t num_samples =
           std::min((uint64_t)MAX_LAT_SAMPLES, latency_sample_cnt[i]);
-      for (uint64_t k = 0; j < num_samples; ++j) {
+      for (uint64_t j = 0; j < num_samples; ++j) {
         all_lat.push_back(latency_samples[i][j]);
       }
     }
 
     double cpu_freq_ghz = 2.5;
-    double to_ns = [&](uint64_t cycles) { return cycles / cpu_freq_ghz; };
+    auto to_ns = [&](uint64_t cycles) { return cycles / cpu_freq_ghz; };
     double p50_lat = 0.0, p99_lat = 0.0;
     if (!all_lat.empty()) {
       std::sort(all_lat.begin(), all_lat.end());
@@ -650,7 +650,7 @@ int main(int argc, char *argv[]) {
              correct_speculative_read_cnt * 1.0 / try_speculative_read_cnt);
       printf("p50 latency: %8.2f ns\n", p50_lat);
       printf("p99 latency: %8.2f ns\n", p99_lat);
-      printf("syn cache size: %.2f MB\n".total_mb);
+      printf("syn cache size: %.2f MB\n", total_mb);
       printf("\n");
     }
     if (count >= TEST_EPOCH) {
