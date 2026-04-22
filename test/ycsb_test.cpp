@@ -1,17 +1,22 @@
 #include "Rolex.h"
 #include "Timer.h"
+#include <algorithm>
 #include <city.h>
 
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <random>
+#include <regex>
 #include <sstream>
 #include <stdlib.h>
 #include <string>
+#include <sys/types.h>
 #include <thread>
 #include <time.h>
 #include <vector>
+#include <x86intrin.h>
 
 #ifdef LONG_TEST_EPOCH
 #define TEST_EPOCH 40
@@ -51,6 +56,10 @@ extern uint64_t correct_speculative_read[MAX_APP_THREAD];
 extern uint64_t try_speculative_read[MAX_APP_THREAD];
 extern uint64_t want_speculative_read[MAX_APP_THREAD];
 extern std::map<uint64_t, uint64_t> range_cnt[MAX_APP_THREAD];
+
+#define MAX_LAT_SAMPLES 2000000
+uint64_t latency_samples[MAX_APP_THREAD][MAX_LAT_SAMPLES];
+uint64_t latency_sample_cnt[MAX_APP_THREAD] = {0};
 
 int kThreadCount;
 int kNodeCount;
@@ -140,6 +149,8 @@ RequstGen *gen_func(DSM *dsm, Request *req, int req_num, int coro_id,
 }
 
 void work_func(RolexIndex *rolex_index, const Request &r, CoroPull *sink) {
+  uint64_t start_tsc = __rdtsc();
+
   if (r.req_type == SEARCH) {
     Value v;
     rolex_index->search(r.k, v, sink);
@@ -150,6 +161,15 @@ void work_func(RolexIndex *rolex_index, const Request &r, CoroPull *sink) {
   } else {
     std::map<Key, Value> ret;
     rolex_index->range_query(r.k, r.k + r.range_size, ret);
+  }
+
+  int id = dsm->getMyThreadID();
+  uint64_t end_tsc = __rdtsc();
+  uint64_t lat_cycles = end_tsc - start_tsc;
+  uint64_t current_cnt = latency_sample_cnt[id];
+  if (current_cnt < MAX_LAT_SAMPLES) {
+    latency_samples[id][current_cnt] = lat_cycles;
+    latency_sample_cnt[id]++;
   }
 }
 
@@ -580,6 +600,24 @@ int main(int argc, char *argv[]) {
       printf("\n\n");
     }
 
+    std::vector<uint64_t> all_lat;
+    for (int i = 0; i < kThreadCount; ++i) {
+      uint64_t num_samples =
+          std::min((uint64_t)MAX_LAT_SAMPLES, latency_sample_cnt[i]);
+      for (uint64_t k = 0; j < num_samples; ++j) {
+        all_lat.push_back(latency_samples[i][j]);
+      }
+    }
+
+    double cpu_freq_ghz = 2.5;
+    double to_ns = [&](uint64_t cycles) { return cycles / cpu_freq_ghz; };
+    double p50_lat = 0.0, p99_lat = 0.0;
+    if (!all_lat.empty()) {
+      std::sort(all_lat.begin(), all_lat.end());
+      p50_lat = to_ns(all_lat[all_lat.size() * 0.5]);
+      p99_lat = to_ns(all_lat[all_lat.size() * 0.99]);
+    }
+
     if (dsm->getMyNodeID() == 0) {
       printf("epoch %d passed!\n", count);
       printf("cluster throughput %.3f Mops\n", cluster_tp / 1000.0);
@@ -599,6 +637,8 @@ int main(int argc, char *argv[]) {
              try_speculative_read_cnt * 1.0 / want_speculative_read_cnt);
       printf("correct ratio of speculative read: %.4lf\n",
              correct_speculative_read_cnt * 1.0 / try_speculative_read_cnt);
+      printf("p50 latency: %8.2f ns\n", p50_lat);
+      printf("p99 latency: %8.2f ns\n", p99_lat);
       printf("\n");
     }
     if (count >= TEST_EPOCH) {
