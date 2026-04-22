@@ -61,6 +61,8 @@ extern std::map<uint64_t, uint64_t> range_cnt[MAX_APP_THREAD];
 uint64_t latency_samples[MAX_APP_THREAD][MAX_LAT_SAMPLES];
 uint64_t latency_sample_cnt[MAX_APP_THREAD] = {0};
 
+size_t syn_cache_size_per_thread[MAX_APP_THREAD] = {0};
+
 int kThreadCount;
 int kNodeCount;
 int kCoroCnt = 8;
@@ -332,6 +334,9 @@ void thread_run(int id) {
       latency[thread_id][0][us_10]++;
     }
   }
+
+  auto thread_id = dsm->getMyThreadID();
+  syn_cache_size_per_thread[thread_id] = rolex_index->get_syn_cache_size();
 }
 
 void parse_args(int argc, char *argv[]) {
@@ -618,6 +623,12 @@ int main(int argc, char *argv[]) {
       p99_lat = to_ns(all_lat[all_lat.size() * 0.99]);
     }
 
+    uint64_t total_syn_cache_bytes = 0;
+    for (int i = 0; i < kThreadCount; ++i) {
+      total_syn_cache_bytes += syn_cache_size_per_thread[i];
+    }
+    double total_mb = total_syn_cache_bytes / (1024.0 * 1024.0);
+
     if (dsm->getMyNodeID() == 0) {
       printf("epoch %d passed!\n", count);
       printf("cluster throughput %.3f Mops\n", cluster_tp / 1000.0);
@@ -639,6 +650,7 @@ int main(int argc, char *argv[]) {
              correct_speculative_read_cnt * 1.0 / try_speculative_read_cnt);
       printf("p50 latency: %8.2f ns\n", p50_lat);
       printf("p99 latency: %8.2f ns\n", p99_lat);
+      printf("syn cache size: %.2f MB\n".total_mb);
       printf("\n");
     }
     if (count >= TEST_EPOCH) {

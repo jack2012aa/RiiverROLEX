@@ -26,7 +26,7 @@ inline void *hugePageAlloc(size_t size) {
   const size_t HUGE_PAGE_SIZE = 2 * 1024 * 1024; // 2MB
   size_t aligned_size =
       ((size + HUGE_PAGE_SIZE - 1) / HUGE_PAGE_SIZE) * HUGE_PAGE_SIZE;
-  printf("Allocating %dB memory\n", aligned_size);
+  printf("Allocating %dB memory on node %d\n", aligned_size, NUMA_NODE);
 
   void *res =
       mmap(NULL, size, PROT_READ | PROT_WRITE,
