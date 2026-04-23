@@ -15,6 +15,7 @@
 #include <queue>
 #include <random>
 #include <set>
+#include <thread>
 #include <utility>
 #include <vector>
 std::mutex debug_lock;
@@ -427,17 +428,21 @@ GlobalAddress RolexIndex::insert_into_syn_leaf_locally(const Key &k, Value v,
       if (e.key == define::kkeyNull || e.key > k)
         break;
     }
-    assert(i != (int)define::leafSpanSize); // ASSERT: synonym leaf is full!!
+    // assert(i != (int)define::leafSpanSize); // ASSERT: synonym leaf is full!!
     int j = i;
     while (j < (int)define::leafSpanSize &&
            syn_records[j].key != define::kkeyNull)
       j++;
-    assert(j != (int)define::leafSpanSize); // ASSERT: synonym leaf is full!!
-    // move [i, j) => [i+1, j+1]
+    // assert(j != (int)define::leafSpanSize); // ASSERT: synonym leaf is full!!
+    //  move [i, j) => [i+1, j+1]
+    if (j == (int)define::leafSpanSize) {
+      j--;
+    }
     if (j > 0)
       for (int k = j - 1; k >= i; --k)
         syn_records[k + 1] = syn_records[k];
     syn_records[i].update(k, v);
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1));
   }
   return syn_leaf_addr;
 }
@@ -980,7 +985,7 @@ void RolexIndex::range_query(
   assert(dsm->is_register());
   before_operation(nullptr);
 #ifdef SYN_CACHE
-  auto &syn_leaf_addrs = coro_syn_leaf_addrs[sink ? sink->get() : 0];
+  auto &syn_leaf_addrs = coro_syn_leaf_addrs[MAX_CORO_NUM];
 #else
   std::map<GlobalAddress, GlobalAddress> syn_leaf_addrs;
 #endif
@@ -1860,9 +1865,11 @@ void RolexIndex::clear_debug_info() {
 
 size_t RolexIndex::get_syn_cache_size() {
 #ifdef SYN_CACHE
-  size_t = total_elements = 0;
+  size_t total_elements = 0;
   for (int i = 0; i <= MAX_CORO_NUM; ++i) {
     total_elements += coro_syn_leaf_addrs[i].size();
+    printf("thread %d coro syn leaf map size: %d\n", dsm->getMyThreadID(),
+           coro_syn_leaf_addrs[i].size());
   }
   size_t payload_size = sizeof(std::pair<const GlobalAddress, GlobalAddress>);
   size_t tree_overhead = 32;

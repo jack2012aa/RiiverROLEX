@@ -1,6 +1,9 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
+// #define CXL
+// #define SYN_CACHE
+
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>

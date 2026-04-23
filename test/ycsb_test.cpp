@@ -614,7 +614,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    double cpu_freq_ghz = 2.5;
+    double cpu_freq_ghz = 2.4;
     auto to_ns = [&](uint64_t cycles) { return cycles / cpu_freq_ghz; };
     double p50_lat = 0.0, p99_lat = 0.0;
     if (!all_lat.empty()) {
@@ -622,12 +622,6 @@ int main(int argc, char *argv[]) {
       p50_lat = to_ns(all_lat[all_lat.size() * 0.5]);
       p99_lat = to_ns(all_lat[all_lat.size() * 0.99]);
     }
-
-    uint64_t total_syn_cache_bytes = 0;
-    for (int i = 0; i < kThreadCount; ++i) {
-      total_syn_cache_bytes += syn_cache_size_per_thread[i];
-    }
-    double total_mb = total_syn_cache_bytes / (1024.0 * 1024.0);
 
     if (dsm->getMyNodeID() == 0) {
       printf("epoch %d passed!\n", count);
@@ -650,7 +644,6 @@ int main(int argc, char *argv[]) {
              correct_speculative_read_cnt * 1.0 / try_speculative_read_cnt);
       printf("p50 latency: %8.2f ns\n", p50_lat);
       printf("p99 latency: %8.2f ns\n", p99_lat);
-      printf("syn cache size: %.2f MB\n", total_mb);
       printf("\n");
     }
     if (count >= TEST_EPOCH) {
@@ -664,6 +657,12 @@ int main(int argc, char *argv[]) {
     th[i].join();
     printf("Thread %d joined.\n", i);
   }
+  uint64_t total_syn_cache_bytes = 0;
+  for (int i = 0; i < kThreadCount; ++i) {
+    total_syn_cache_bytes += syn_cache_size_per_thread[i];
+  }
+  double total_mb = total_syn_cache_bytes / (1024.0 * 1024.0);
+  printf("syn cache size: %.2f MB\n", total_mb);
   rolex_index->statistics();
   printf("[END]\n");
   dsm->barrier("fin");

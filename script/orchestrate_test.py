@@ -68,7 +68,7 @@ def run_test(
 ):
     global master_promise, helper_promise, workers_promise
     dists = ["uniform", "zipfian"]
-    workloads = ["a", "b", "c", "d", "e", "f"]
+    workloads = "abcdef"
     working_dir = "/nfs_share/RiiverROLEX/build"
     executable = f"{working_dir}/ycsb_test"
 
