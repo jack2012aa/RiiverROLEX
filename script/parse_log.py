@@ -6,15 +6,25 @@ import re
 def parse_rolex_logs(base_dir):
     # 1. Regex patterns to extract performance metrics from primary.log (Node 0)
     metrics_patterns = {
-        "TP_Mops": re.compile(r"cluster throughput ([\d\.]+) Mops"),
-        "CAS_Fail": re.compile(r"avg\. lock/cas fail cnt: ([\d\.\-nan]+)"),
-        "Sibling_Read": re.compile(r"read sibling leaf rate: ([\d\.\-nan]+)"),
-        "Leaf_Retry": re.compile(r"read leaf retry rate: ([\d\.\-nan]+)"),
-        "Spec_Read_Rate": re.compile(r"speculative read rate: ([\d\.\-nan]+)"),
-        "Spec_Read_Correct": re.compile(
-            r"correct ratio of speculative read: ([\d\.\-nan]+)"
+        "TP_Mops": re.compile(r"cluster throughput\s+([\d\.]+)\s*Mops", re.IGNORECASE),
+        "CAS_Fail": re.compile(
+            r"avg\. lock/cas fail cnt:\s*([\d\.\-nan]+)", re.IGNORECASE
         ),
-        "Cache_MB": re.compile(r"consumed cache size = ([\d\.]+) MB"),
+        "Sibling_Read": re.compile(
+            r"read sibling leaf rate:\s*([\d\.\-nan]+)", re.IGNORECASE
+        ),
+        "Leaf_Retry": re.compile(
+            r"read leaf retry rate:\s*([\d\.\-nan]+)", re.IGNORECASE
+        ),
+        "Spec_Read_Rate": re.compile(
+            r"speculative read rate:\s*([\d\.\-nan]+)", re.IGNORECASE
+        ),
+        "Spec_Read_Correct": re.compile(
+            r"correct ratio of speculative read:\s*([\d\.\-nan]+)", re.IGNORECASE
+        ),
+        "Cache_MB": re.compile(r"syn cache size:\s*([\d\.]+)\s*MB", re.IGNORECASE),
+        "p50_Lat": re.compile(r"p50 latency\s*:\s*([\d\.]+)\s*ns", re.IGNORECASE),
+        "p99_Lat": re.compile(r"p99 latency\s*:\s*([\d\.]+)\s*ns", re.IGNORECASE),
     }
 
     # 2. Regex pattern to extract leaf_cnt distribution from secondary.log (Node 1)
@@ -44,6 +54,8 @@ def parse_rolex_logs(base_dir):
             "Dist": "Unknown",
             "WL": "N/A",
             "TP_Mops": "N/A",
+            "p50_Lat": "N/A",
+            "p99_Lat": "N/A",
             "CAS_Fail": "N/A",
             "Sibling_Read": "N/A",
             "Leaf_Retry": "N/A",
@@ -52,6 +64,9 @@ def parse_rolex_logs(base_dir):
             "Cache_MB": "N/A",
             "Leaf_Distribution": "N/A",
         }
+        name_match = re.search(r"workload[a-zA-Z0-9]+_(.+)", exp_data["Dir_Name"])
+        if name_match:
+            exp_data["Name"] = name_match.group(1).strip()
 
         # Try to infer Distribution and Workload from the directory name
         # e.g., "results/uniform_workloada_mytest" -> Dist: Uniform, WL: A
@@ -113,14 +128,15 @@ def parse_rolex_logs(base_dir):
 
     # 5. Print table
     print("=" * 145)
-    header = f"{'Name':<8} | {'Dist':<8} | {'WL':<3} | {'TP(Mops)':<8} | {'CAS_Fail':<8} | {'Sibling':<8} | {'Retry':<8} | {'SpecRate':<8} | {'SpecCorr':<8} | {'Cache(MB)':<9} | {'Leaf_Dist (Start -> End)'}"
+    header = f"{'Name':<8} | {'Dist':<8} | {'WL':<3} | {'TP(Mops)':<8} | {'p50(ns)':<8} | {'p99(ns)':<8} | {'CAS_Fail':<8} | {'Sibling':<8} | {'Retry':<8} | {'SpecRate':<8} | {'SpecCorr':<8} | {'Cache(MB)':<9} | {'Leaf_Dist (Start -> End)'}"
     print(header)
     print("-" * 145)
 
     for exp in experiments:
         row = (
             f"{exp['Name']:<8} | {exp['Dist']:<8} | {exp['WL']:<3} | "
-            f"{exp['TP_Mops']:<8} | {exp['CAS_Fail']:<8} | {exp['Sibling_Read']:<8} | {exp['Leaf_Retry']:<8} | "
+            f"{exp['TP_Mops']:<8} | {exp['p50_Lat']:<8} | {exp['p99_Lat']:<8} | "
+            f"{exp['CAS_Fail']:<8} | {exp['Sibling_Read']:<8} | {exp['Leaf_Retry']:<8} | "
             f"{exp['Spec_Read_Rate']:<8} | {exp['Spec_Read_Correct']:<8} | {exp['Cache_MB']:<9} | {exp['Leaf_Distribution']}"
         )
         print(row)

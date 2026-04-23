@@ -90,7 +90,7 @@ def run_test(
                 warn=True,
             )
             logging.info("master started")
-            sleep(1)
+            sleep(5)
 
             helper_log = (
                 f"/nfs_share/results/secondary_log_{dist}_workload{workload}_{name}.log"
@@ -103,7 +103,7 @@ def run_test(
                 timeout=TIMEOUT_SEC,
             )
             logging.info("helper started")
-            sleep(1)
+            sleep(5)
 
             debug_log = f"~/debug/debug_{dist}_{workload}_{name}.log"
             workers_promise = workers.run(
