@@ -36,7 +36,7 @@ runcmd:
 
   # ROLEX
   - cd /nfs_share
-  - git clone https://github.com/jack2012aa/RiiverROLEX.git
+  - git clone https://github.com/jack2012aa/RiverROLEX.git
   - chmod +x -R /nfs_share/ROLEX/script
 
   # Other dependencies

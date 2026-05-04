@@ -36,7 +36,7 @@ def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
     if no_uniform or no_zipfian:
         logging.info("generating data set...")
         result = master.run(
-            f"python3 /nfs_share/RiiverROLEX/script/generator.py -n {2 + len(workers)}",
+            f"python3 /nfs_share/RiverROLEX/script/generator.py -n {2 + len(workers)}",
             warn=True,
         )
         if "No such file" in result.stderr:
@@ -55,7 +55,7 @@ def set_up(master: Connection, helper: Connection, workers: ThreadingGroup):
     master.sudo("systemctl restart memcached", hide=True)
     master.run("sleep 1")
     result = master.run(
-        "python3 /nfs_share/RiiverROLEX/script/reset_memcached.py", warn=True, hide=True
+        "python3 /nfs_share/RiverROLEX/script/reset_memcached.py", warn=True, hide=True
     )
     if "complete" not in result.stdout:
         logging.error("Memcached is not set up correctly")
@@ -67,9 +67,9 @@ def run_test(
     master: Connection, helper: Connection, workers: ThreadingGroup, name: str
 ):
     global master_promise, helper_promise, workers_promise
-    dists = ["uniform", "zipfian"]
+    dists = ["zipfian"]
     workloads = "abcdef"
-    working_dir = "/nfs_share/RiiverROLEX/build"
+    working_dir = "/nfs_share/RiverROLEX/build"
     executable = f"{working_dir}/ycsb_test"
 
     for dist in dists:
