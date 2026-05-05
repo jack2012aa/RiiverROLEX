@@ -5,11 +5,20 @@ import os
 import random
 import sys
 import time
+from collections import defaultdict
 
 import numpy as np
 
 # Use Python's built-in C-style array to save memory
 global_all_keys = None
+
+
+def fast_bounded_zipfian(s, num_items, num_samples):
+    ranks = np.arange(1, num_items + 1)
+    weights = 1.0 / (ranks**s)
+    probabilities = weights / weights.sum()
+    samples = np.random.choice(num_items, size=num_samples, p=probabilities)
+    return samples
 
 
 def generate_partition(args):
@@ -25,12 +34,17 @@ def generate_partition(args):
             OS_PATH, f"txn_randint_workload{workload}{client_id}"
         )
         if dist == "zipfian":
-            zipf_indices = (np.random.zipf(1.5, keys_per_thread) - 1) % total_keys
+            zipf_indices = fast_bounded_zipfian(
+                s=0.99, num_items=total_keys, num_samples=keys_per_thread
+            )
+        counter = defaultdict(int)
         with open(txn_file_path, "w") as f:
             for i in range(keys_per_thread):
                 key = ""
                 if dist == "zipfian":
                     key = global_all_keys[zipf_indices[i]]
+                    counter[key] += 1
+                    key += counter[key]
                 else:
                     key = global_all_keys[random.randrange(total_keys)]
 
@@ -72,8 +86,6 @@ def generate_partition(args):
                         f.write(f"{op} {key}\n")
                     else:
                         op = "INSERT"
-                        if dist == "zipfian":
-                            key = (1 << 60) + (i * 256) + int(client_id)
                         f.write(f"{op} {key}\n")
 
 
